@@ -27,9 +27,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
 import java.util.SequencedMap;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.LinkedHashMap;
 
@@ -247,7 +247,7 @@ public class GithubProcessor {
                     repository.getName(),
                     missingLabels);
             for (String name : missingLabels) {
-                String color = String.format("%06x", new Random().nextInt(0xffffff + 1));
+                String color = String.format("%06x", ThreadLocalRandom.current().nextInt(0xffffff + 1));
                 repository.createLabel(name, color);
             }
         }
