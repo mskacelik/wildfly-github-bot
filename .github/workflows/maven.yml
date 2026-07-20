@@ -3,12 +3,28 @@ name: Java CI with Maven
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '*.md'
+      - '*.txt'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '*.md'
+      - '*.txt'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     name: JDK ${{matrix.java-version}} JVM build and tests
+    env:
+      MVN: ./mvnw --show-version --batch-mode --no-transfer-progress
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -24,6 +40,7 @@ jobs:
       with:
         distribution: "temurin"
         java-version: ${{ matrix.java-version }}
+        cache: 'maven'
 
     - name: Build with Maven
-      run: ./mvnw -B install
+      run: $MVN install
