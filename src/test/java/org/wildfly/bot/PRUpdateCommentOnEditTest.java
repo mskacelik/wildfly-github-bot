@@ -78,14 +78,20 @@ public class PRUpdateCommentOnEditTest {
 
     @Test
     void testRemoveCommentAndUpdateCommitStatusOnEditToSkipFormatCheck() throws Throwable {
+        // Config with a skip pattern that will bypass format checks
         wildflyConfigFile = """
                 wildfly:
                   format:
+                    skip: "JIRA not needed"
                 """;
+
+        // PR has invalid title but description matches the skip pattern, simulating an edit
         pullRequestJson = TestModel
                 .setPullRequestJsonBuilder(pullRequestJsonBuilder -> pullRequestJsonBuilder.title(INVALID_TITLE)
-                        .description("@%s skip format".formatted(botContextProvider.getBotName()))
+                        .description("JIRA not needed")
                         .action(Action.EDITED));
+
+        // Mock a pre-existing failure comment and commit status from before the edit
         mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
                 .comment(FAILED_FORMAT_COMMENT.formatted(Stream.of(
                         DEFAULT_COMMIT_MESSAGE.formatted(PROJECT_PATTERN_REGEX.formatted("WFLY")),
@@ -101,9 +107,12 @@ public class PRUpdateCommentOnEditTest {
                 mocks -> WildflyGitHubBotTesting.mockRepo(mocks, wildflyConfigFile, pullRequestJson, mockedContext))
                 .pullRequestEvent(pullRequestJson)
                 .then(mocks -> {
+                    // Previous failure comment should be deleted
                     GHIssueComment comment = mocks.issueComment(0);
                     Mockito.verify(comment).delete();
+                    // Commit status should now show skipped
                     WildflyGitHubBotTesting.verifyFormatSkipped(mocks.repository(TEST_REPO), pullRequestJson);
                 });
     }
+
 }
