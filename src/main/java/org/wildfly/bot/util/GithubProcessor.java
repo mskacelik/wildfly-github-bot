@@ -12,6 +12,7 @@ import org.kohsuke.github.GHLabel;
 import org.kohsuke.github.GHPerson;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHPullRequestCommitDetail;
+import org.kohsuke.github.GHPullRequestReview;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GHUser;
 import org.kohsuke.github.GitHub;
@@ -86,35 +87,40 @@ public class GithubProcessor {
     }
 
     public void processNotifies(GHPullRequest pullRequest, GitHub gitHub,
-            SequencedMap<String, List<String>> ccMentionsWithRules, Set<String> reviewers,
+            SequencedMap<String, List<String>> ccMentionsWithRules, Set<String> reviewersToBeRequested,
             List<String> emails) throws IOException {
-        if (ccMentionsWithRules.isEmpty() && reviewers.isEmpty()) {
+        if (ccMentionsWithRules.isEmpty() && reviewersToBeRequested.isEmpty()) {
             updateCCMentions(pullRequest, new LinkedHashMap<>());
             return;
         }
 
-        reviewers.forEach(ccMentionsWithRules::remove);
+        reviewersToBeRequested.forEach(ccMentionsWithRules::remove);
 
-        List<String> currentReviewers = pullRequest.getRequestedReviewers()
-                .stream()
+        // pending reviewers
+        Set<String> existingReviewers = pullRequest.getRequestedReviewers().stream()
                 .map(GHPerson::getLogin)
-                .toList();
+                .collect(Collectors.toSet());
 
-        logger.infof("Current reviewers already added to the PR: %s", currentReviewers);
+        // reviewers who have already submitted a review (non-pending reviewers)
+        for (GHPullRequestReview review : pullRequest.listReviews()) {
+            existingReviewers.add(review.getUser().getLogin());
+        }
 
-        currentReviewers.forEach(reviewers::remove);
+        logger.infof("Existing reviewers (pending and submitted): %s", existingReviewers);
 
-        logger.infof("Reviewers to be added to the PR: %s", reviewers);
+        reviewersToBeRequested.removeAll(existingReviewers);
+
+        logger.infof("Reviewers to be added to the PR: %s", reviewersToBeRequested);
 
         updateCCMentions(pullRequest, ccMentionsWithRules);
 
-        if (!reviewers.isEmpty()) {
+        if (!reviewersToBeRequested.isEmpty()) {
             if (wildFlyBotConfig.isDryRun()) {
                 logger.infof(RuntimeConstants.DRY_RUN_PREPEND.formatted("PR review requested from \"%s\""),
-                        String.join(",", reviewers));
+                        String.join(",", reviewersToBeRequested));
             } else {
                 List<String> failedReviewers = new ArrayList<>();
-                for (String requestedReviewer : reviewers) {
+                for (String requestedReviewer : reviewersToBeRequested) {
                     try {
                         GHUser ghUser = gitHub.getUser(requestedReviewer);
                         pullRequest.requestReviewers(List.of(ghUser));
