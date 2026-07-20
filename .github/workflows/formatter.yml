@@ -3,12 +3,28 @@ name: Format check
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '*.md'
+      - '*.txt'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.gitignore'
+      - 'LICENSE'
+      - '*.md'
+      - '*.txt'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     name: Checkout and run check
+    env:
+      MVN: ./mvnw --show-version --batch-mode --no-transfer-progress
     timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
@@ -20,6 +36,7 @@ jobs:
         with:
           distribution: "temurin"
           java-version: 21
+          cache: 'maven'
 
-      - name: Build with Maven
-        run: ./mvnw -B formatter:validate
+      - name: Format check
+        run: $MVN formatter:validate
