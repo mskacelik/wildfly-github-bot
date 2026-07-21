@@ -60,7 +60,7 @@ public class PRNotifyChangeOnPREditTest {
         mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
                 .commit("WFLY-123 commit")
                 .files("src/pom.xml", "app/pom.xml")
-                .reviewers("Tadpole")
+                .pendingReviewers("Tadpole")
                 .mockNext(MockedGHRepository.builder())
                 .users("Tadpole", "Butterfly");
 
@@ -96,7 +96,7 @@ public class PRNotifyChangeOnPREditTest {
                 .comment("/cc @Duke [WFLY]", botContextProvider.getBotName())
                 .commit("WFLY-123 commit")
                 .files("src/pom.xml", "app/pom.xml")
-                .reviewers("Tadpole")
+                .pendingReviewers("Tadpole")
                 .mockNext(MockedGHRepository.builder())
                 .users("Tadpole", "Butterfly");
 
@@ -131,7 +131,7 @@ public class PRNotifyChangeOnPREditTest {
         mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
                 .commit("WFLY-123 commit")
                 .files("src/pom.xml", "app/pom.xml")
-                .reviewers("Tadpole")
+                .pendingReviewers("Tadpole")
                 .mockNext(MockedGHRepository.builder())
                 .users("Tadpole", "Butterfly");
 
@@ -190,7 +190,7 @@ public class PRNotifyChangeOnPREditTest {
         mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
                 .commit("WFLY-123 commit")
                 .files("src/pom.xml", "app/pom.xml")
-                .reviewers("Tadpole", "Butterfly")
+                .pendingReviewers("Tadpole", "Butterfly")
                 .mockNext(MockedGHRepository.builder())
                 .users("Tadpole", "Butterfly");
 
@@ -201,5 +201,90 @@ public class PRNotifyChangeOnPREditTest {
                     Mockito.verify(mocks.pullRequest(pullRequestJson.id())).comment("/cc @Duke [test2]");
                     Mockito.verify(mocks.pullRequest(pullRequestJson.id()), Mockito.never()).requestReviewers(anyList());
                 });
+    }
+
+    @Test
+    public void testReviewerWhoSubmittedReviewIsExcluded() throws Throwable {
+        wildflyConfigFile = """
+                wildfly:
+                  rules:
+                    - id: "test"
+                      directories: [src]
+                      notify: [Tadpole]""";
+
+        mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
+                .commit("WFLY-123 commit")
+                .files("src/pom.xml")
+                .submittedReviewers("Tadpole")
+                .mockNext(MockedGHRepository.builder())
+                .users("Tadpole");
+
+        TestModel.given(
+                mocks -> WildflyGitHubBotTesting.mockRepo(mocks, wildflyConfigFile, pullRequestJson, mockedContext))
+                .pullRequestEvent(pullRequestJson)
+                // reviewer already submitted their review, no need for the bot to request it
+                // again
+                .then(mocks -> Mockito.verify(mocks.pullRequest(pullRequestJson.id()), Mockito.never())
+                        .requestReviewers(anyList()));
+    }
+
+    @Test
+    public void testReviewerWhoSubmittedReviewIsExcludedNewReviewerAdded() throws Throwable {
+        wildflyConfigFile = """
+                wildfly:
+                  rules:
+                    - id: "test"
+                      directories: [src]
+                      notify: [Tadpole]
+
+                    - id: "test2"
+                      directories: [app]
+                      notify: [Butterfly]""";
+
+        mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
+                .commit("WFLY-123 commit")
+                .files("src/pom.xml", "app/pom.xml")
+                .submittedReviewers("Tadpole")
+                .mockNext(MockedGHRepository.builder())
+                .users("Tadpole", "Butterfly");
+
+        TestModel.given(
+                mocks -> WildflyGitHubBotTesting.mockRepo(mocks, wildflyConfigFile, pullRequestJson, mockedContext))
+                .pullRequestEvent(pullRequestJson)
+                .then(mocks -> {
+                    ArgumentCaptor<List<GHUser>> captor = ArgumentCaptor.forClass(List.class);
+                    // first reviewer (Tadpole) already submitted their review
+                    // after a force push, commit now contains changes in the app directory, so the
+                    // bot should request a review from Butterfly
+                    Mockito.verify(mocks.pullRequest(pullRequestJson.id())).requestReviewers(captor.capture());
+                    Assertions.assertEquals(1, captor.getValue().size());
+                    MatcherAssert.assertThat(captor.getValue().stream()
+                            .map(GHPerson::getLogin)
+                            .toList(), Matchers.containsInAnyOrder("Butterfly"));
+                });
+    }
+
+    @Test
+    public void testReviewerWhoSubmittedReviewIsExcludedPendingReviewerNotDuplicated() throws Throwable {
+        wildflyConfigFile = """
+                wildfly:
+                  rules:
+                    - id: "test"
+                      directories: [src]
+                      notify: [Tadpole, Butterfly]""";
+
+        mockedContext = MockedGHPullRequest.builder(pullRequestJson.id())
+                .commit("WFLY-123 commit")
+                .files("src/pom.xml")
+                .submittedReviewers("Tadpole")
+                .pendingReviewers("Butterfly")
+                .mockNext(MockedGHRepository.builder())
+                .users("Tadpole", "Butterfly");
+
+        TestModel.given(
+                mocks -> WildflyGitHubBotTesting.mockRepo(mocks, wildflyConfigFile, pullRequestJson, mockedContext))
+                .pullRequestEvent(pullRequestJson)
+                .then(mocks -> Mockito.verify(mocks.pullRequest(pullRequestJson.id()), Mockito.never())
+                        .requestReviewers(anyList()));
     }
 }

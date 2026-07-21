@@ -44,7 +44,7 @@ public class PullRequestRuleActivationProcessor {
 
         GHRepository repository = pullRequest.getRepository();
         SequencedMap<String, List<String>> ccMentionsWithRules = new LinkedHashMap<>();
-        Set<String> reviewers = new HashSet<>();
+        Set<String> reviewersToBeRequested = new HashSet<>();
         Set<String> labels = new HashSet<>();
 
         for (WildFlyConfigFile.WildFlyRule rule : wildflyBotConfigFile.wildfly.rules) {
@@ -52,7 +52,7 @@ public class PullRequestRuleActivationProcessor {
                 if (!rule.notify.isEmpty()) {
                     logger.infof("title \"%s\" was matched with a rule, containing notify, with the id: %s.",
                             pullRequest.getTitle(), rule.id != null ? rule.id : "N/A");
-                    reviewers.addAll(rule.notify);
+                    reviewersToBeRequested.addAll(rule.notify);
                 }
                 labels.addAll(rule.labels);
             } else if (Matcher.notifyComment(pullRequest, rule)) {
@@ -67,7 +67,7 @@ public class PullRequestRuleActivationProcessor {
         }
 
         ccMentionsWithRules.remove(pullRequest.getUser().getLogin());
-        reviewers.remove(pullRequest.getUser().getLogin());
+        reviewersToBeRequested.remove(pullRequest.getUser().getLogin());
 
         githubProcessor.createLabelsIfMissing(repository, labels);
 
@@ -81,7 +81,7 @@ public class PullRequestRuleActivationProcessor {
             pullRequest.addLabels(labels.toArray(String[]::new));
         }
 
-        githubProcessor.processNotifies(pullRequest, gitHub, ccMentionsWithRules, reviewers,
+        githubProcessor.processNotifies(pullRequest, gitHub, ccMentionsWithRules, reviewersToBeRequested,
                 wildflyBotConfigFile.wildfly.emails);
     }
 

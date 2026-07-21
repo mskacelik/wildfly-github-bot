@@ -8,6 +8,7 @@ import org.kohsuke.github.GHLabel;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHPullRequestCommitDetail;
 import org.kohsuke.github.GHPullRequestFileDetail;
+import org.kohsuke.github.GHPullRequestReview;
 import org.kohsuke.github.GHUser;
 import org.kohsuke.github.PagedSearchIterable;
 import org.mockito.Mockito;
@@ -19,6 +20,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.SequencedSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -28,7 +30,10 @@ public class MockedGHPullRequest extends Mockable {
     private Set<String> prFiles = new LinkedHashSet<>();
     private String description;
     private final List<Tuple2<String, String>> comments = new ArrayList<>();
-    private Set<String> reviewers = new LinkedHashSet<>();
+
+    private final SequencedSet<String> pendingReviewers = new LinkedHashSet<>();
+    private final SequencedSet<String> reviewersWhoSubmittedReview = new LinkedHashSet<>();
+
     private Set<String> prLabels = new LinkedHashSet<>();
     private final List<MockedCommit> commits = new ArrayList<>();
     private Boolean mergeable = Boolean.TRUE;
@@ -88,8 +93,13 @@ public class MockedGHPullRequest extends Mockable {
         return this;
     }
 
-    public MockedGHPullRequest reviewers(String... reviewers) {
-        this.reviewers.addAll(Arrays.asList(reviewers));
+    public MockedGHPullRequest pendingReviewers(String... reviewerLogins) {
+        this.pendingReviewers.addAll(Arrays.asList(reviewerLogins));
+        return this;
+    }
+
+    public MockedGHPullRequest submittedReviewers(String... reviewerLogins) {
+        this.reviewersWhoSubmittedReview.addAll(Arrays.asList(reviewerLogins));
         return this;
     }
 
@@ -156,12 +166,24 @@ public class MockedGHPullRequest extends Mockable {
         Mockito.when(pullRequest.listCommits()).thenReturn(commitDetails);
 
         List<GHUser> requestedReviewers = new ArrayList<>();
-        for (String reviewer : reviewers) {
+        for (String reviewer : pendingReviewers) {
             GHUser user = mocks.ghObject(GHUser.class, idGenerator.incrementAndGet());
             Mockito.when(user.getLogin()).thenReturn(reviewer);
             requestedReviewers.add(user);
         }
         Mockito.when(pullRequest.getRequestedReviewers()).thenReturn(requestedReviewers);
+
+        List<GHPullRequestReview> mockedReviews = new ArrayList<>();
+        for (String reviewerLogin : reviewersWhoSubmittedReview) {
+            GHPullRequestReview review = Mockito.mock(GHPullRequestReview.class);
+            GHUser reviewUser = mocks.ghObject(GHUser.class, idGenerator.incrementAndGet());
+            Mockito.when(reviewUser.getLogin()).thenReturn(reviewerLogin);
+            Mockito.when(review.getUser()).thenReturn(reviewUser);
+            mockedReviews.add(review);
+        }
+        PagedSearchIterable<GHPullRequestReview> reviewsIterable = GitHubAppMockito
+                .mockPagedIterable(mockedReviews.toArray(GHPullRequestReview[]::new));
+        Mockito.when(pullRequest.listReviews()).thenReturn(reviewsIterable);
 
         Collection<GHLabel> pullRequestLabels = new ArrayList<>();
         for (String label : this.prLabels) {
